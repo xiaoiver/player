@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import "./App.css";
 import { Button, Spin } from "antd";
 import { WebAudioController } from "./WebAudioController";
-// @ts-ignore
 import MediaWorker from "./MediaWorker?worker";
 
 const videoCodec = "av1";
@@ -36,10 +35,6 @@ function App() {
     sendMediaTimeUpdates(false);
   };
 
-  const handleDetect = () => {
-    mediaWorker!.postMessage({ command: "detect" });
-  };
-
   // Helper function to periodically send the current media time to the media
   // worker. Ideally we would instead compute the media time on the worker thread,
   // but this requires WebAudio interfaces to be exposed on the WorkerGlobalScope.
@@ -68,12 +63,13 @@ function App() {
   }
 
   useEffect(() => {
+    let mediaWorker: Worker;
     if (currentRef.current) {
       const offscreenCanvas = currentRef.current!.transferControlToOffscreen();
       const audioController = new WebAudioController();
       setAudioController(audioController);
 
-      const mediaWorker = new MediaWorker();
+      mediaWorker = new MediaWorker();
       mediaWorker.postMessage(
         {
           command: "initialize",
@@ -94,11 +90,13 @@ function App() {
         setInited(true);
       });
       setMediaWorker(mediaWorker);
-
-      // @ts-ignore
-      // @see https://github.com/facebook/react/issues/24502
-      currentRef.current = null;
     }
+
+    return () => {
+      // @ts-ignore
+      currentRef.current = null;
+      // mediaWorker.terminate();
+    };
   }, []);
 
   return (
@@ -109,9 +107,6 @@ function App() {
       </Button>
       <Button disabled={!inited} onClick={handlePause}>
         Pause
-      </Button>
-      <Button disabled={!inited} onClick={handleDetect}>
-        Detect
       </Button>
       <canvas width={1280} height={720} ref={currentRef}></canvas>
     </>

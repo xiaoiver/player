@@ -19,13 +19,27 @@ export class WebAudioController {
   ) {
     // Set up AudioContext to house graph of AudioNodes and control rendering.
     this.audioContext = new AudioContext({
-      sampleRate: sampleRate,
+      /**
+       * Decoded from MP4Source.
+       * @see https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/AudioContext#samplerate
+       */
+      sampleRate,
+      /**
+       * The browser selects a latency that will maximize playback time by minimizing power consumption at the expense of latency.
+       * Useful for non-interactive playback, such as playing music.
+       * @see https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/AudioContext#latencyhint
+       */
       latencyHint: "playback",
     });
+
+    // @see https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/suspend
     this.audioContext.suspend();
 
     // Make script modules available for execution by AudioWorklet.
-    var workletSource = await URLFromFiles([RINGBUF_PATH, AUDIOSINK_PATH]);
+    const workletSource = await URLFromFiles([RINGBUF_PATH, AUDIOSINK_PATH]);
+    /**
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/AudioWorklet
+     */
     await this.audioContext.audioWorklet.addModule(workletSource);
 
     // Get an instance of the AudioSink worklet, passing it the memory for a
@@ -71,7 +85,7 @@ export class WebAudioController {
     // hardware buffering, etc. This starts out negative, because it takes some
     // time to buffer, and crosses zero as the first audio sample is produced
     // by the audio output device.
-    let totalOutputLatency =
+    const totalOutputLatency =
       this.audioContext!.outputLatency + this.audioContext!.baseLatency;
 
     return Math.max(this.audioContext!.currentTime - totalOutputLatency, 0.0);

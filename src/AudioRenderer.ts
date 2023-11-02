@@ -1,5 +1,4 @@
 import { StreamType } from "./PullDemuxer";
-// @ts-ignore
 import { RingBuffer } from "ringbuf.js";
 import { ENABLE_DEBUG_LOGGING, debugLog } from "./utils/log";
 import { MP4PullDemuxer } from "./MP4PullDemuxer";
@@ -13,12 +12,12 @@ export class AudioRenderer {
   private fillInProgress = false;
   private decoder!: AudioDecoder;
   private demuxer!: MP4PullDemuxer;
-  private interleavingBuffers: any[] = [];
-  private init_resolver: any;
+  private interleavingBuffers: Float32Array[] = [];
+  private init_resolver: ((value: unknown) => void) | null = null;
 
   sampleRate = 0;
   channelCount = 0;
-  ringbuffer: RingBuffer | undefined;
+  ringbuffer!: RingBuffer;
 
   async initialize(demuxer: MP4PullDemuxer) {
     this.fillInProgress = false;
@@ -28,7 +27,7 @@ export class AudioRenderer {
     await this.demuxer.initialize(StreamType.AUDIO);
 
     this.decoder = new AudioDecoder({
-      output: this.bufferAudioData.bind(this),
+      output: this.bufferAudioData,
       error: (e: Error) => console.error(e),
     });
     const config = this.demuxer.getDecoderConfig();
@@ -37,16 +36,16 @@ export class AudioRenderer {
 
     debugLog(config);
 
-    let support = await AudioDecoder.isConfigSupported(config);
+    const support = await AudioDecoder.isConfigSupported(config);
     console.assert(support.supported);
     this.decoder.configure(config);
 
     // Initialize the ring buffer between the decoder and the real-time audio
     // rendering thread. The AudioRenderer has buffer space for approximately
     // 500ms of decoded audio ahead.
-    let sampleCountIn500ms =
+    const sampleCountIn500ms =
       DATA_BUFFER_DURATION * this.sampleRate * this.channelCount;
-    let sab = RingBuffer.getStorageForCapacity(
+    const sab = RingBuffer.getStorageForCapacity(
       sampleCountIn500ms,
       Float32Array
     );
@@ -54,7 +53,7 @@ export class AudioRenderer {
     this.interleavingBuffers = [];
 
     this.init_resolver = null;
-    let promise = new Promise((resolver) => (this.init_resolver = resolver));
+    const promise = new Promise((resolver) => (this.init_resolver = resolver));
 
     this.fillDataBuffer();
     return promise;
@@ -118,7 +117,7 @@ export class AudioRenderer {
 
       // Initialize() is done when the buffer fills for the first time.
       if (this.init_resolver) {
-        this.init_resolver();
+        this.init_resolver(null);
         this.init_resolver = null;
       }
 
@@ -134,20 +133,20 @@ export class AudioRenderer {
       debugLog(
         `\tMore samples. usedBufferSecs:${usedBufferSecs} < target:${DATA_BUFFER_DECODE_TARGET_DURATION}.`
       );
-      let chunk = await this.demuxer.getNextChunk();
+      const chunk = await this.demuxer.getNextChunk();
       this.decoder.decode(chunk);
 
       // NOTE: awaiting the demuxer.readSample() above will also give the
       // decoder output callbacks a chance to run, so we may see usedBufferSecs
       // increase.
       usedBufferElements =
-        this.ringbuffer.capacity() - this.ringbuffer.available_write();
+        this.ringbuffer.capacity() - this.ringbuffer.availableWrite();
       usedBufferSecs =
         usedBufferElements / (this.channelCount * this.sampleRate);
     }
 
     if (ENABLE_DEBUG_LOGGING) {
-      let logPrefix =
+      const logPrefix =
         usedBufferSecs >= DATA_BUFFER_DECODE_TARGET_DURATION
           ? "\tbuffered enough"
           : "\tdecoder saturated";
@@ -162,7 +161,7 @@ export class AudioRenderer {
 
   bufferHealth() {
     return (
-      (1 - this.ringbuffer.available_write() / this.ringbuffer.capacity()) * 100
+      (1 - this.ringbuffer.availableWrite() / this.ringbuffer.capacity()) * 100
     );
   }
 
@@ -184,11 +183,11 @@ export class AudioRenderer {
         inputs.length * inputs[0].length
       } < ${output.length}})`;
     }
-    let channelCount = inputs.length;
+    const channelCount = inputs.length;
     let outIdx = outputSampleOffset;
     let inputIdx = Math.floor(inputOffset / channelCount);
-    var channel = inputOffset % channelCount;
-    for (var i = 0; i < inputSamplesToCopy; i++) {
+    let channel = inputOffset % channelCount;
+    for (let i = 0; i < inputSamplesToCopy; i++) {
       output[outIdx++] = inputs[channel][inputIdx];
       if (++channel == inputs.length) {
         channel = 0;
@@ -197,10 +196,10 @@ export class AudioRenderer {
     }
   }
 
-  bufferAudioData(data: AudioData) {
+  private bufferAudioData = (data: AudioData) => {
     if (this.interleavingBuffers.length != data.numberOfChannels) {
       this.interleavingBuffers = new Array(this.channelCount);
-      for (var i = 0; i < this.interleavingBuffers.length; i++) {
+      for (let i = 0; i < this.interleavingBuffers.length; i++) {
         this.interleavingBuffers[i] = new Float32Array(data.numberOfFrames);
       }
     }
@@ -211,26 +210,26 @@ export class AudioRenderer {
       }`
     );
     // Write to temporary planar arrays, and interleave into the ring buffer.
-    for (var i = 0; i < this.channelCount; i++) {
+    for (let i = 0; i < this.channelCount; i++) {
       data.copyTo(this.interleavingBuffers[i], { planeIndex: i });
     }
     // Write the data to the ring buffer. Because it wraps around, there is
     // potentially two copyTo to do.
-    let wrote = this.ringbuffer.writeCallback(
+    const wrote = this.ringbuffer.writeCallback(
       data.numberOfFrames * data.numberOfChannels,
-      (first_part: Float32Array, second_part: Float32Array) => {
+      (first_part, second_part) => {
         this.interleave(
           this.interleavingBuffers,
           0,
           first_part.length,
-          first_part,
+          first_part as Float32Array,
           0
         );
         this.interleave(
           this.interleavingBuffers,
           first_part.length,
           second_part.length,
-          second_part,
+          second_part as Float32Array,
           0
         );
       }
@@ -258,5 +257,5 @@ export class AudioRenderer {
     // fillDataBuffer() gives up if too much decode work is queued. Keep trying
     // now that we've finished some.
     this.fillDataBuffer();
-  }
+  };
 }

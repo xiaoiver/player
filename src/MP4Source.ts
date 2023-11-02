@@ -1,73 +1,77 @@
-// @ts-ignore
-import * as MP4Box from "mp4box";
-import { debugLog } from "./utils/log";
-import type {
-  MP4Info,
+import {
   MP4File,
+  MP4Info,
   Sample,
   MP4AudioTrack,
   MP4VideoTrack,
-} from "./types/mp4box";
+  createFile,
+} from "mp4box";
+import { debugLog } from "./utils/log";
 
 export class MP4Source {
   private file: MP4File;
   private info: MP4Info | null = null;
-  private _info_resolver: any;
+  private infoResolver:
+    | ((value: MP4Info | PromiseLike<MP4Info>) => void)
+    | null;
   private _onSamples!: (samples: Sample[]) => void;
 
   constructor(uri: string) {
-    this.file = MP4Box.createFile();
+    /**
+     * @see https://github.com/gpac/mp4box.js/#getting-information
+     */
+    this.file = createFile();
     this.file.onError = console.error.bind(console);
-    this.file.onReady = this.onReady.bind(this);
-    this.file.onSamples = this.onSamples.bind(this);
+    this.file.onReady = this.onReady;
+    this.file.onSamples = this.onSamples;
 
     debugLog("fetching file");
     fetch(uri).then((response) => {
       debugLog("fetch responded");
       const reader = response.body!.getReader();
       let offset = 0;
-      let mp4File = this.file;
+      const mp4File = this.file;
 
-      // @ts-ignore
-      function appendBuffers({ done, value }) {
+      // MP4Box.js supports progressive parsing.
+      // @see https://github.com/gpac/mp4box.js/#appendbufferdata
+      // @see type ReadableStreamReadResult
+      function appendBuffers({ done, value }: any): void | Promise<void> {
         if (done) {
           mp4File.flush();
           return;
         }
-        let buf = value.buffer;
+        const buf = value.buffer;
         buf.fileStart = offset;
 
         offset += buf.byteLength;
 
         mp4File.appendBuffer(buf);
 
-        // @ts-ignore
         return reader.read().then(appendBuffers);
       }
 
-      // @ts-ignore
       return reader.read().then(appendBuffers);
     });
 
     this.info = null;
-    this._info_resolver = null;
+    this.infoResolver = null;
   }
 
-  onReady(info: MP4Info) {
+  private onReady = (info: MP4Info) => {
     // TODO: Generate configuration changes.
     this.info = info;
 
-    if (this._info_resolver) {
-      this._info_resolver(info);
-      this._info_resolver = null;
+    if (this.infoResolver) {
+      this.infoResolver(info);
+      this.infoResolver = null;
     }
-  }
+  };
 
   getInfo(): Promise<MP4Info> {
     if (this.info) return Promise.resolve(this.info);
 
     return new Promise((resolver) => {
-      this._info_resolver = resolver;
+      this.infoResolver = resolver;
     });
   }
 
@@ -118,7 +122,7 @@ export class MP4Source {
     this.file.stop();
   }
 
-  onSamples(id: number, user: any, samples: Sample[]) {
+  private onSamples = (_id: number, _user: any, samples: Sample[]) => {
     this._onSamples(samples);
-  }
+  };
 }

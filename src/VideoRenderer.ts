@@ -35,16 +35,16 @@ export class VideoRenderer {
     this.canvasCtx = canvas.getContext("2d")!;
 
     this.decoder = new VideoDecoder({
-      output: this.bufferFrame.bind(this),
+      output: this.bufferFrame,
       error: (e) => console.error(e),
     });
 
-    let support = await VideoDecoder.isConfigSupported(config);
+    const support = await VideoDecoder.isConfigSupported(config);
     console.assert(support.supported);
     this.decoder.configure(config);
 
     this.init_resolver = null;
-    let promise = new Promise((resolver) => (this.init_resolver = resolver));
+    const promise = new Promise((resolver) => (this.init_resolver = resolver));
 
     this.fillFrameBuffer();
     return promise;
@@ -52,7 +52,7 @@ export class VideoRenderer {
 
   render(timestamp: number, paint = true) {
     debugLog("render(%d)", timestamp);
-    let frame = this.chooseFrame(timestamp);
+    const frame = this.chooseFrame(timestamp);
     this.fillFrameBuffer();
 
     if (frame == null) {
@@ -66,15 +66,13 @@ export class VideoRenderer {
   }
 
   chooseFrame(timestamp: number) {
-    console.log("frameBuffer length", this.frameBuffer.length);
-
     if (this.frameBuffer.length == 0) return null;
 
     let minTimeDelta = Number.MAX_VALUE;
     let frameIndex = -1;
 
     for (let i = 0; i < this.frameBuffer.length; i++) {
-      let time_delta = Math.abs(timestamp - this.frameBuffer[i].timestamp);
+      const time_delta = Math.abs(timestamp - this.frameBuffer[i].timestamp);
       if (time_delta < minTimeDelta) {
         minTimeDelta = time_delta;
         frameIndex = i;
@@ -92,7 +90,7 @@ export class VideoRenderer {
       staleFrame && staleFrame.close();
     }
 
-    let chosenFrame = this.frameBuffer[0];
+    const chosenFrame = this.frameBuffer[0];
     debugLog(
       "frame time delta = %dms (%d vs %d)",
       minTimeDelta / 1000,
@@ -102,7 +100,7 @@ export class VideoRenderer {
     return chosenFrame;
   }
 
-  async fillFrameBuffer() {
+  private fillFrameBuffer = async () => {
     if (this.frameBufferFull()) {
       debugLog("frame buffer full");
 
@@ -125,24 +123,24 @@ export class VideoRenderer {
       this.frameBuffer.length < FRAME_BUFFER_TARGET_SIZE &&
       this.decoder.decodeQueueSize < FRAME_BUFFER_TARGET_SIZE
     ) {
-      let chunk = await this.demuxer.getNextChunk();
+      const chunk = await this.demuxer.getNextChunk();
       this.decoder.decode(chunk);
     }
 
     this.fillInProgress = false;
 
     // Give decoder a chance to work, see if we saturated the pipeline.
-    setTimeout(this.fillFrameBuffer.bind(this), 0);
-  }
+    setTimeout(this.fillFrameBuffer, 0);
+  };
 
   frameBufferFull() {
     return this.frameBuffer.length >= FRAME_BUFFER_TARGET_SIZE;
   }
 
-  bufferFrame(frame: VideoFrame) {
+  private bufferFrame = (frame: VideoFrame) => {
     debugLog(`bufferFrame(${frame.timestamp})`);
     this.frameBuffer.push(frame);
-  }
+  };
 
   paint(frame: VideoFrame) {
     this.canvasCtx.drawImage(
@@ -154,6 +152,10 @@ export class VideoRenderer {
     );
   }
 
+  /**
+   * Draw label with Canvas2D API for now, use WebGPU later.
+   * @see https://github.com/webgpu/webgpu-samples/blob/main/src/sample/worker/worker.ts
+   */
   drawLabel(
     frame: VideoFrame,
     boxes_data: Float32Array,
@@ -161,7 +163,7 @@ export class VideoRenderer {
     classes_data: Int32Array,
     ratios: [number, number]
   ) {
-    console.log(boxes_data, scores_data, classes_data, ratios);
+    // console.log(boxes_data, scores_data, classes_data, ratios);
 
     const ctx = this.canvasCtx;
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); // clean canvas

@@ -1,12 +1,13 @@
-// @ts-ignore
-import { DataStream } from "mp4box";
+import { DataStream, MP4AudioTrack, MP4VideoTrack, Sample } from "mp4box";
 import { MP4Source } from "./MP4Source";
 import { PullDemuxer, StreamType } from "./PullDemuxer";
-import { MP4AudioTrack, MP4VideoTrack, Sample } from "./types/mp4box";
 import { debugLog } from "./utils/log";
 
-// Wrapper around MP4Box.js that shims pull-based demuxing on top their
-// push-based API.
+const SAMPLE_BUFFER_TARGET_SIZE = 50;
+
+/**
+ * Wrapper around MP4Box.js that shims pull-based demuxing on top their push-based API.
+ */
 export class MP4PullDemuxer implements PullDemuxer {
   private source!: MP4Source;
   private streamType!: StreamType;
@@ -14,22 +15,24 @@ export class MP4PullDemuxer implements PullDemuxer {
   private audioTrack!: MP4AudioTrack;
   private selectedTrack!: MP4VideoTrack | MP4AudioTrack;
   private readySamples!: Sample[];
-  private _pending_read_resolver: any;
+  private pendingReadResolver:
+    | ((value: Sample | PromiseLike<Sample>) => void)
+    | null = null;
 
   constructor(private fileUri: string) {}
 
   async initialize(streamType: StreamType) {
     this.source = new MP4Source(this.fileUri);
     this.readySamples = [];
-    this._pending_read_resolver = null;
+    this.pendingReadResolver = null;
     this.streamType = streamType;
 
-    await this._tracksReady();
+    await this.tracksReady();
 
     if (this.streamType == StreamType.AUDIO) {
-      this._selectTrack(this.audioTrack);
+      this.selectTrack(this.audioTrack);
     } else {
-      this._selectTrack(this.videoTrack);
+      this.selectTrack(this.videoTrack);
     }
   }
 
@@ -51,13 +54,13 @@ export class MP4PullDemuxer implements PullDemuxer {
         // @ts-ignore
         displayWidth: this.videoTrack.track_width,
         displayHeight: this.videoTrack.track_height,
-        description: this._getDescription(this.source.getDescriptionBox()),
+        description: this.getDescription(this.source.getDescriptionBox()),
       };
     }
   }
 
   async getNextChunk() {
-    let sample = await this._readSample();
+    const sample = await this.readSample();
     const type = sample.is_sync ? "key" : "delta";
     const pts_us = (sample.cts * 1000000) / sample.timescale;
     const duration_us = (sample.duration * 1000000) / sample.timescale;
@@ -73,55 +76,56 @@ export class MP4PullDemuxer implements PullDemuxer {
     });
   }
 
-  _getDescription(descriptionBox: any) {
+  private getDescription(descriptionBox: any) {
     const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
     descriptionBox.write(stream);
     return new Uint8Array(stream.buffer, 8); // Remove the box header.
   }
 
-  async _tracksReady() {
-    let info = await this.source.getInfo();
+  private async tracksReady() {
+    const info = await this.source.getInfo();
     this.videoTrack = info.videoTracks[0];
     this.audioTrack = info.audioTracks[0];
   }
 
-  _selectTrack(track: MP4VideoTrack | MP4AudioTrack) {
+  private selectTrack(track: MP4VideoTrack | MP4AudioTrack) {
     console.assert(!this.selectedTrack, "changing tracks is not implemented");
     this.selectedTrack = track;
     this.source.selectTrack(track);
   }
 
-  async _readSample(): Promise<Sample> {
+  private async readSample() {
     console.assert(!!this.selectedTrack);
-    console.assert(!this._pending_read_resolver);
+    console.assert(!this.pendingReadResolver);
 
     if (this.readySamples.length) {
       return Promise.resolve(this.readySamples.shift()!);
     }
 
-    let promise = new Promise<Sample>((resolver) => {
-      this._pending_read_resolver = resolver;
+    const promise = new Promise<Sample>((resolver) => {
+      this.pendingReadResolver = resolver;
     });
-    console.assert(this._pending_read_resolver);
-    this.source.start(this._onSamples.bind(this));
+    console.assert(!!this.pendingReadResolver);
+    this.source.start(this.onSamples);
     return promise;
   }
 
-  _onSamples(samples: Sample[]) {
-    const SAMPLE_BUFFER_TARGET_SIZE = 50;
-
+  /**
+   * @see https://github.com/gpac/mp4box.js/#onsamplesid-user-samples
+   */
+  private onSamples = (samples: Sample[]) => {
     this.readySamples.push(...samples);
     if (this.readySamples.length >= SAMPLE_BUFFER_TARGET_SIZE)
       this.source.stop();
 
-    let firstSampleTime = (samples[0].cts * 1000000) / samples[0].timescale;
+    const firstSampleTime = (samples[0].cts * 1000000) / samples[0].timescale;
     debugLog(
       `adding new ${samples.length} samples (first = ${firstSampleTime}). total = ${this.readySamples.length}`
     );
 
-    if (this._pending_read_resolver) {
-      this._pending_read_resolver(this.readySamples.shift());
-      this._pending_read_resolver = null;
+    if (this.pendingReadResolver) {
+      this.pendingReadResolver(this.readySamples.shift()!);
+      this.pendingReadResolver = null;
     }
-  }
+  };
 }

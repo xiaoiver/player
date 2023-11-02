@@ -5,7 +5,8 @@
 console.info(`Worker started`);
 
 import * as tf from "@tensorflow/tfjs";
-import "@tensorflow/tfjs-backend-webgl"; // set backend to webgl
+// import "@tensorflow/tfjs-backend-webgl"; // set backend to webgl
+import "@tensorflow/tfjs-backend-webgpu"; // set backend to webgl
 import { MP4PullDemuxer } from "./MP4PullDemuxer";
 import { AudioRenderer } from "./AudioRenderer";
 import { VideoRenderer } from "./VideoRenderer";
@@ -14,8 +15,8 @@ import labels from "./labels.json";
 const numClass = labels.length;
 
 let playing = false;
-let audioRenderer = new AudioRenderer();
-let videoRenderer = new VideoRenderer();
+const audioRenderer = new AudioRenderer();
+const videoRenderer = new VideoRenderer();
 let lastMediaTimeSecs = 0;
 let lastMediaTimeCapturePoint = 0;
 
@@ -31,7 +32,7 @@ function updateMediaTime(
 
 // Estimate current media time using last given time + offset from now()
 function getMediaTimeMicroSeconds() {
-  let msecsSinceCapture = performance.now() - lastMediaTimeCapturePoint;
+  const msecsSinceCapture = performance.now() - lastMediaTimeCapturePoint;
   return (lastMediaTimeSecs * 1000 + msecsSinceCapture) * 1000;
 }
 
@@ -99,8 +100,6 @@ const detect = async (
   const [modelWidth, modelHeight] = yolov8.inputs[0].shape!.slice(1, 3); // get model width and height
   tf.engine().startScope(); // start scoping tf engine
 
-  console.log(modelWidth, modelHeight);
-
   const [input, xRatio, yRatio] = await preprocess(
     frame,
     modelWidth,
@@ -147,8 +146,6 @@ const detect = async (
   const scores_data = scores.gather(nms, 0).dataSync() as Float32Array; // indexing scores by nms index
   const classes_data = classes.gather(nms, 0).dataSync() as Int32Array; // indexing classes by nms index
 
-  console.log("ttt", boxes_data, scores_data, classes_data, [xRatio, yRatio]);
-
   callback([boxes_data, scores_data, classes_data, [xRatio, yRatio]]); // render boxes
 
   tf.dispose([res, transRes, boxes, scores, classes, nms]); // clear memory
@@ -160,9 +157,9 @@ self.addEventListener("message", async function (e) {
   console.info(`Worker message: ${JSON.stringify(e.data)}`);
 
   switch (e.data.command) {
-    case "initialize":
-      let audioDemuxer = new MP4PullDemuxer(e.data.audioFile);
-      let videoDemuxer = new MP4PullDemuxer(e.data.videoFile);
+    case "initialize": {
+      const audioDemuxer = new MP4PullDemuxer(e.data.audioFile);
+      const videoDemuxer = new MP4PullDemuxer(e.data.videoFile);
       await Promise.all([
         audioRenderer.initialize(audioDemuxer),
         videoRenderer.initialize(videoDemuxer, e.data.canvas),
@@ -175,6 +172,7 @@ self.addEventListener("message", async function (e) {
         sharedArrayBuffer: audioRenderer.ringbuffer.buf,
       });
       break;
+    }
     case "play":
       playing = true;
 
@@ -207,21 +205,6 @@ self.addEventListener("message", async function (e) {
     case "pause":
       playing = false;
       audioRenderer.pause();
-      break;
-    case "detect":
-      const currentFrame = videoRenderer.chooseFrame(lastMediaTimeSecs)!;
-      await detect(
-        currentFrame,
-        ([boxes_data, scores_data, classes_data, [xRatio, yRatio]]) => {
-          videoRenderer.drawLabel(
-            currentFrame,
-            boxes_data,
-            scores_data,
-            classes_data,
-            [xRatio, yRatio]
-          );
-        }
-      );
       break;
     case "update-media-time":
       updateMediaTime(

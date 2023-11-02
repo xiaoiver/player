@@ -7,6 +7,9 @@ dependencies:
   '@tensorflow/tfjs-backend-webgl':
     specifier: ^4.12.0
     version: 4.12.0(@tensorflow/tfjs-core@4.12.0)
+  '@tensorflow/tfjs-backend-webgpu':
+    specifier: ^4.12.0
+    version: 4.12.0(@tensorflow/tfjs-core@4.12.0)
   antd:
     specifier: ^5.10.3
     version: 5.10.3(react-dom@18.2.0)(react@18.2.0)
@@ -656,6 +659,15 @@ packages:
       '@types/offscreencanvas': 2019.3.0
       '@types/seedrandom': 2.4.32
       seedrandom: 3.0.5
+    dev: false
+
+  /@tensorflow/tfjs-backend-webgpu@4.12.0(@tensorflow/tfjs-core@4.12.0):
+    resolution: {integrity: sha512-aDzzq113O0o++tQelr/KBWOK+tTMR4T+LkzSzNXJ1Yp1fh2P2AqNiuDQgN4vQkZ+g0pUBRPutKkyFg8IpCj1qA==}
+    peerDependencies:
+      '@tensorflow/tfjs-core': 4.12.0
+    dependencies:
+      '@tensorflow/tfjs-backend-cpu': 4.12.0(@tensorflow/tfjs-core@4.12.0)
+      '@tensorflow/tfjs-core': 4.12.0
     dev: false
 
   /@tensorflow/tfjs-converter@4.12.0(@tensorflow/tfjs-core@4.12.0):
