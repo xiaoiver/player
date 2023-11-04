@@ -10,7 +10,7 @@ import "@tensorflow/tfjs-backend-webgpu"; // set backend to webgl
 import { MP4PullDemuxer } from "./MP4PullDemuxer";
 import { AudioRenderer } from "./AudioRenderer";
 import { VideoRenderer } from "./VideoRenderer";
-import labels from "./labels.json";
+import labels from "./assets/labels.json";
 
 const numClass = labels.length;
 
@@ -165,8 +165,11 @@ self.addEventListener("message", async function (e) {
         videoRenderer.initialize(videoDemuxer, e.data.canvas),
         initializeModel(),
       ]);
+
+      const info = await videoDemuxer["source"].getInfo();
       postMessage({
         command: "initialize-done",
+        duration: info.duration,
         sampleRate: audioRenderer.sampleRate,
         channelCount: audioRenderer.channelCount,
         sharedArrayBuffer: audioRenderer.ringbuffer.buf,

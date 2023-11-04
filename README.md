@@ -8,6 +8,9 @@ The following techniques are used for now:
 - [Web Audio API](#WebAudioAPI)
 - [WebGPU](#WebGPU) Render [VideoFrame](https://developer.mozilla.org/en-US/docs/Web/API/VideoFrame) and other HUDs on [OffscreenCanvas]() off main thread.
 - [tensorflow.js](#tensorflow.js) Run pre-trained models with WebGPU backend in webworker.
+- Some UIs come from:
+  - [react-timeline-editor](https://github.com/xzdarcy/react-timeline-editor)
+  - [Player](https://jeffsegovia.dev/blogs/building-an-audio-player-with-reactjs)
 
 ## Getting started
 
@@ -32,9 +35,10 @@ For audio & video tracks in `.mp4`:
 
 ## <a id='WebAudioAPI' />Web Audio API
 
-Now we get a SharedArrayBuffer.
-
 An [AudioContext](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext) controls both the creation of the nodes it contains and the execution of the audio processing, or decoding. It has a member [AudioWorklet](https://developer.mozilla.org/en-US/docs/Web/API/AudioWorklet) which is used to supply custom audio processing scripts that execute in a separate thread to provide very low latency audio processing.
+
+First, we need to define a custom [AudioWorkletProcessor](https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletProcessor) named `AutoSink`.
+Next, in our main script file we'll load the processor, create an instance of [AudioWorkletNode](https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletNode) passing it the name of the processor, and connect the node to an audio graph. It will consume the RingBuffer stored in the previous step.
 
 ## <a id='WebGPU' />WebGPU
 
@@ -46,7 +50,7 @@ https://developer.chrome.com/blog/from-webgl-to-webgpu/#video-frame-processing
 
 ## <a id='tensorflow.js' />tensorflow.js
 
-Since [Web Neural Network API (WebNN)](https://github.com/webmachinelearning/webnn-samples) is in development, tf.js is our only choice in browser for now.By the way, its [polyfill](https://github.com/webmachinelearning/webnn-polyfill) is based on tf.js either.
+Since [Web Neural Network API (WebNN)](https://github.com/webmachinelearning/webnn-samples) is in development, tf.js is our only choice in browser for now. By the way, its [polyfill](https://github.com/webmachinelearning/webnn-polyfill) is based on tf.js either.
 
 We use [WebGPU backend](https://github.com/tensorflow/tfjs/tree/master/tfjs-backend-webgpu) in WebWorker to run pre-trained models including:
 

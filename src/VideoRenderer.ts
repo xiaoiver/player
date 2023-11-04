@@ -1,7 +1,7 @@
 import { MP4PullDemuxer } from "./MP4PullDemuxer";
 import { StreamType } from "./PullDemuxer";
 import { debugLog } from "./utils/log";
-import labels from "./labels.json";
+import labels from "./assets/labels.json";
 import { getRandomColor, hexToRgba } from "./utils/color";
 
 const FRAME_BUFFER_TARGET_SIZE = 3;

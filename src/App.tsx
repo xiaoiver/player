@@ -1,19 +1,26 @@
 import { useState, useEffect, useRef } from "react";
 import "./App.css";
-import { Button, Spin } from "antd";
 import { WebAudioController } from "./WebAudioController";
 import MediaWorker from "./MediaWorker?worker";
+import Player from "./components/Player";
+// import { Timeline } from "@xzdarcy/react-timeline-editor";
+import { mockData, mockEffect } from "./assets/mock";
 
 const videoCodec = "av1";
 
 function App() {
   const currentRef = useRef<HTMLCanvasElement>(null);
   const [inited, setInited] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.2);
+  const [duration, setDuration] = useState(0);
+  const [mediaTime, setMediaTime] = useState(0);
   const [mediaWorker, setMediaWorker] = useState<Worker | null>(null);
   const [audioController, setAudioController] =
     useState<WebAudioController | null>(null);
 
   const handlePlay = () => {
+    setPlaying(true);
     audioController!.play().then(() => console.log("playback started"));
     mediaWorker!.postMessage({
       command: "play",
@@ -26,6 +33,7 @@ function App() {
   };
 
   const handlePause = () => {
+    setPlaying(false);
     audioController!.pause().then(() => {
       // Wait to pause worker until context suspended to ensure we continue
       // filling audio buffer while audio is playing.
@@ -33,6 +41,13 @@ function App() {
     });
 
     sendMediaTimeUpdates(false);
+  };
+
+  const handleProgress = (progress: number) => {};
+
+  const handleVolumeChange = (volume: number) => {
+    setVolume(volume);
+    audioController!.setVolume(volume);
   };
 
   // Helper function to periodically send the current media time to the media
@@ -49,12 +64,14 @@ function App() {
       // glitches more noticeable when changing the output device.
       const UPDATE_INTERVAL = 1000;
       mediaTimeUpdateInterval = setInterval(() => {
+        const t = audioController!.getMediaTimeInSeconds();
         mediaWorker!.postMessage({
           command: "update-media-time",
-          mediaTimeSecs: audioController!.getMediaTimeInSeconds(),
+          mediaTimeSecs: t,
           mediaTimeCapturedAtHighResTimestamp:
             performance.now() + performance.timeOrigin,
         });
+        setMediaTime(t);
       }, UPDATE_INTERVAL);
     } else {
       clearInterval(mediaTimeUpdateInterval);
@@ -88,6 +105,7 @@ function App() {
           e.data.sharedArrayBuffer
         );
         setInited(true);
+        setDuration(e.data.duration);
       });
       setMediaWorker(mediaWorker);
     }
@@ -100,16 +118,31 @@ function App() {
   }, []);
 
   return (
-    <>
-      <Spin spinning={!inited} />
-      <Button disabled={!inited} onClick={handlePlay}>
-        Play
-      </Button>
-      <Button disabled={!inited} onClick={handlePause}>
-        Pause
-      </Button>
+    <div className="flex flex-col h-full bg-slate-800 text-slate-300">
       <canvas width={1280} height={720} ref={currentRef}></canvas>
-    </>
+      <div className="mt-auto">
+        <Player
+          isReady={inited}
+          playing={playing}
+          loop={false}
+          playbackRate={1.0}
+          volume={volume}
+          muted={volume === 0}
+          currentSong={{ title: "test", src: "" }}
+          progress={mediaTime}
+          duration={duration / 1000}
+          onPlay={handlePlay}
+          onPause={handlePause}
+          onVolumeChange={handleVolumeChange}
+          onProgress={handleProgress}
+          onStart={() => {}}
+          onEnded={() => {}}
+          onPlaybackRateChange={() => {}}
+          onSeek={() => {}}
+        />
+      </div>
+      {/* <Timeline editorData={mockData} effects={mockEffect} /> */}
+    </div>
   );
 }
 
